@@ -8,13 +8,14 @@ if (!apiKey) {
 
 const genAI = new GoogleGenerativeAI(apiKey || "missing-key");
 
-// Kandidat model (semua free tier Gemini). Dicoba berurutan jika model tidak tersedia.
+// Kandidat model (semua free tier Gemini), diurutkan dari kuota paling longgar.
+// Dicoba berurutan jika model tidak tersedia / kena limit (503/429).
 // Bukan fallback ke provider berbayar — hanya variasi model gratis Gemini.
 const MODEL_CANDIDATES = [
   process.env.GEMINI_MODEL || "",
-  "gemini-3.5-flash",
+  "gemini-flash-lite-latest", // utama: flash-lite, kuota free tier paling besar
   "gemini-3.5-flash-lite",
-  "gemini-flash-lite-latest",
+  "gemini-3.5-flash", // cadangan kalau lite tidak tersedia
 ].filter(Boolean);
 
 const systemInstruction = `Kamu adalah "StudyMate AI" — asisten belajar multimodal untuk siswa SMA/SMK. Tujuanmu membantu pengguna memahami materi dan soal, bukan hanya memberikan jawaban akhir.
