@@ -87,7 +87,7 @@ export async function generateChatResponse(
     const base64Data = imageUrl.split(",")[1] || imageUrl;
     result = await chat.sendMessage([
       message,
-      { inline_data: { data: base64Data, mime_type: "image/jpeg" } },
+      { inlineData: { data: base64Data, mimeType: "image/jpeg" } },
     ]);
   } else {
     result = await chat.sendMessage(message);
