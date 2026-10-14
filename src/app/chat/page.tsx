@@ -152,7 +152,7 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: userMessage || "Analisis foto soal ini dan jelaskan.",
           mode,
-          conversationId: convId,
+          history: messages,
           imageUrl: imageData,
         }),
       });

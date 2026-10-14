@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { message, mode, conversationId, imageUrl } = await request.json();
+    const { message, mode, history = [], imageUrl } = await request.json();
 
     if (!message && !imageUrl) {
       return NextResponse.json(
@@ -19,21 +19,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { getDB } = await import("@/lib/idb");
-    const db = await getDB();
+    // History dikirim dari client (browser) karena IndexedDB hanya ada di browser
+    const trimmedHistory = (Array.isArray(history) ? history : [])
+      .slice(-20)
+      .map((msg: { role: "user" | "assistant"; content: string }) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
 
-    let history: { role: "user" | "assistant"; content: string }[] = [];
-    if (conversationId) {
-      const conversation = await db.get("conversations", conversationId);
-      if (conversation && conversation.messages) {
-        history = conversation.messages.slice(-20).map((msg) => ({
-          role: msg.role as "user" | "assistant",
-          content: msg.content,
-        }));
-      }
-    }
-
-    const aiResponse = await generateChatResponse(message, mode, history, imageUrl);
+    const aiResponse = await generateChatResponse(message, mode, trimmedHistory, imageUrl);
 
     return NextResponse.json({ response: aiResponse });
   } catch (error: unknown) {
