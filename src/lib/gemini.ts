@@ -8,6 +8,15 @@ if (!apiKey) {
 
 const genAI = new GoogleGenerativeAI(apiKey || "missing-key");
 
+// Kandidat model (semua free tier Gemini). Dicoba berurutan jika model tidak tersedia.
+// Bukan fallback ke provider berbayar — hanya variasi model gratis Gemini.
+const MODEL_CANDIDATES = [
+  process.env.GEMINI_MODEL || "",
+  "gemini-3.5-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-flash-lite-latest",
+].filter(Boolean);
+
 const systemInstruction = `Kamu adalah "StudyMate AI" — asisten belajar multimodal untuk siswa SMA/SMK. Tujuanmu membantu pengguna memahami materi dan soal, bukan hanya memberikan jawaban akhir.
 
 IDENTITAS:
@@ -50,6 +59,15 @@ interface HistoryMessage {
   content: string;
 }
 
+// Ekstrak mimeType + data base64 dari data URL (image/jpeg, image/png, image/webp)
+function parseImage(imageUrl: string): { mimeType: string; data: string } {
+  const match = imageUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (match) {
+    return { mimeType: match[1], data: match[2] };
+  }
+  return { mimeType: "image/jpeg", data: imageUrl.split(",")[1] || imageUrl };
+}
+
 export async function generateChatResponse(
   message: string,
   mode: string = "lengkap",
@@ -70,30 +88,41 @@ export async function generateChatResponse(
     effectiveSystem += `\n\nPengguna mengirim foto soal/materi. Analisis gambar tersebut dan berikan penjelasan sesuai mode yang dipilih.`;
   }
 
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    systemInstruction: effectiveSystem,
-  });
-
   const chatHistory: Content[] = history.map((msg) => ({
     role: msg.role === "assistant" ? "model" : "user",
     parts: [{ text: msg.content }],
   }));
 
-  const chat = model.startChat({ history: chatHistory });
+  let lastError: unknown = null;
 
-  let result;
-  if (imageUrl) {
-    const base64Data = imageUrl.split(",")[1] || imageUrl;
-    result = await chat.sendMessage([
-      message,
-      { inlineData: { data: base64Data, mimeType: "image/jpeg" } },
-    ]);
-  } else {
-    result = await chat.sendMessage(message);
+  for (const modelName of MODEL_CANDIDATES) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: effectiveSystem,
+      });
+
+      const chat = model.startChat({ history: chatHistory });
+
+      let result;
+      if (imageUrl) {
+        const { mimeType, data } = parseImage(imageUrl);
+        result = await chat.sendMessage([
+          message,
+          { inlineData: { mimeType, data } },
+        ]);
+      } else {
+        result = await chat.sendMessage(message);
+      }
+
+      return result.response.text();
+    } catch (err) {
+      lastError = err;
+      console.error(`Model ${modelName} gagal, coba model berikutnya...`);
+    }
   }
 
-  return result.response.text();
+  throw lastError instanceof Error ? lastError : new Error("Semua model AI tidak tersedia");
 }
 
 export async function generateSummary(text: string): Promise<string> {
@@ -101,12 +130,21 @@ export async function generateSummary(text: string): Promise<string> {
     throw new Error("GEMINI_API_KEY belum dikonfigurasi");
   }
 
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    systemInstruction: `Kamu adalah asisten ringkasan. Buat ringkasan terstruktur dari teks yang diberikan. Gunakan poin-poin, beri judul bagian, dan pertahankan informasi penting. Bahasa: Indonesia.`,
-  });
+  let lastError: unknown = null;
 
-  const prompt = `Ringkas teks berikut secara terstruktur:\n\n${text}`;
-  const result = await model.generateContent(prompt);
-  return result.response.text();
+  for (const modelName of MODEL_CANDIDATES) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: `Kamu adalah asisten ringkasan. Buat ringkasan terstruktur dari teks yang diberikan. Gunakan poin-poin, beri judul bagian, dan pertahankan informasi penting. Bahasa: Indonesia.`,
+      });
+      const prompt = `Ringkas teks berikut secara terstruktur:\n\n${text}`;
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Semua model AI tidak tersedia");
 }
