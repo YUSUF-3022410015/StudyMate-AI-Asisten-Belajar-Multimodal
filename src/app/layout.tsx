@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Partner AI - Knowledge Base Internal Perusahaan",
-  description: "AI asisten internal perusahaan untuk menjawab SOP, peraturan, prosedur, dan kebijakan perusahaan",
+  title: "StudyMate AI — Asisten Belajar Multimodal",
+  description: "Asisten belajar berbasis AI untuk membantu siswa SMA/SMK memahami materi dan soal melalui teks maupun gambar",
 };
 
 export default function RootLayout({

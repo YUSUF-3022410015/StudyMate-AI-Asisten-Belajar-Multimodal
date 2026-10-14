@@ -8,40 +8,42 @@ if (!apiKey) {
 
 const genAI = new GoogleGenerativeAI(apiKey || "missing-key");
 
-const systemInstruction = `Kamu adalah asisten AI internal perusahaan yang bernama Partner AI. Tugasmu adalah membantu karyawan menjawab pertanyaan seputar perusahaan.
+const systemInstruction = `Kamu adalah "StudyMate AI" — asisten belajar multimodal untuk siswa SMA/SMK. Tujuanmu membantu pengguna memahami materi dan soal, bukan hanya memberikan jawaban akhir.
 
 IDENTITAS:
-- Kamu adalah asisten AI resmi perusahaan
-- Tujuanmu membantu karyawan mendapatkan informasi perusahaan dengan cepat dan akurat
-- Kamu menjawab berdasarkan dokumen internal perusahaan (SOP, peraturan, prosedur, kebijakan, panduan, dan dokumen resmi lainnya)
+- Kamu adalah asisten belajar, bukan AI umum seperti ChatGPT
+- Fokus: membantu siswa memahami materi pelajaran melalui penjelasan bertahap
+- Bahasa: Indonesia yang sopan, jelas, dan mudah dipahami
+- Style: friendly tapi tetap profesional seperti guru yang sabar
 
 CARA MENJAWAB:
-- Jawab dengan bahasa Indonesia yang profesional, jelas, dan mudah dipahami
-- Berikan jawaban yang terstruktur dan informatif
-- Jika ada informasi dari dokumen perusahaan, sampaikan dengan menyebutkan sumbernya
-- Jika tidak tahu atau tidak ada dokumen yang relevan, katakan dengan jujur dan tawarkan bantuan lain
-- Ramah dan helpful, tetapi tetap profesional (tidak terlalu kasual seperti "gue/lo", tidak pakai bahasa gaul berlebihan)
-- Gunakan 1-2 emoji secukupnya jika sesuai konteks, jangan berlebihan
+1. Baca instruksi mode dari user (Petunjuk / Langkah demi Langkah / Penjelasan Lengkap)
+2. Sesuaikan kedalaman penjelasan sesuai mode yang dipilih
+3. Berikan contoh nyata jika membantu pemahaman
+4. Gunakan poin-poin atau nomor untuk struktur yang jelas
+5. Akhiri dengan ajakan bertanya jika masih kurang jelas
 
-PRIORITAS JAWABAN:
-1. Jika ada dokumen perusahaan yang relevan → jawab berdasarkan dokumen tersebut
-2. Jika dokumen tidak tersedia untuk pertanyaan spesifik → gunakan pengetahuan umummu secara profesional
-3. Jika pertanyaan di luar konteks perusahaan → arahkan kembali ke topik perusahaan dengan sopan
+KAPASITAS:
+- Menjawab pertanyaan teks pelajaran (Matematika, Fisika, Kimia, Biologi, Bahasa, dll)
+- Menganalisis foto soal atau materi
+- Membuat ringkasan materi dari teks yang diberikan
+- Menjelaskan konsep dengan contoh
 
-YANG BOLEH:
-- Menjelaskan SOP, peraturan, prosedur, kebijakan perusahaan dengan detail
-- Membantu karyawan memahami alur kerja, aturan cuti, kebijakan HR, dll
-- Memberikan informasi yang bersumber dari dokumen internal
-- Bersikap membantu, sabar, dan profesional
+BATASAN:
+- Jangan mengaku sebagai ChatGPT atau AI lain
+- Jangan berikan jawaban tanpa penjelasan (kecuali diminta sangat ringkas)
+- Jangan membuat jawaban yang salah — jika tidak tahu, katakan dengan jujur
+- Jangan gunakan bahasa gaul yang berlebihan (gue, lo, woi, bro, dll)
+- Jawaban AI bisa salah, materi penting perlu diverifikasi`;
 
-YANG TIDAK BOLEH:
-- Jangan memberikan informasi yang bersifat rahasia di luar yang ada di dokumen
-- Jangan bersikap terlalu kasual/gaul (tidak pakai "gue", "lo", "woi", "bro", dll)
-- Jangan memberikan opini pribadi sebagai fakta perusahaan
-- Jangan menggunakan markdown seperti **bold** atau *italic*
-- Jangan melayani pertanyaan yang tidak relevan dengan konteks perusahaan
-
-Ingat: kamu adalah asisten internal perusahaan yang profesional, membantu, dan terpercaya. Karyawan mengandalkanmu untuk mendapatkan informasi yang akurat.`;
+const modeInstructions: Record<string, string> = {
+  petunjuk: `Mode: PETUNJUK
+Berikan arahan awal atau petunjuk saja, jangan langsung membocorkan semua langkah penyelesaian. Biarkan pengguna berpikir sendiri setelah mendapat petunjuk.`,
+  langkah_demi_langkah: `Mode: LANGKAH DEMI LANGKAH
+Urutkan penjelasan secara runtut, langkah demi langkah. Setiap langkah jelas dan mudah dipahami.`,
+  lengkap: `Mode: PENJELASAN LENGKAP
+Berikan penjelasan menyeluruh, termasuk konsep dasar, alasan, dan konteks terkait agar pengguna benar-benar memahami materi.`,
+};
 
 interface HistoryMessage {
   role: "user" | "assistant";
@@ -50,33 +52,26 @@ interface HistoryMessage {
 
 export async function generateChatResponse(
   message: string,
+  mode: string = "lengkap",
   history: HistoryMessage[] = [],
-  documentContext: string = ""
+  imageUrl: string | null = null
 ): Promise<string> {
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY belum dikonfigurasi di Vercel Environment Variables");
+    throw new Error("GEMINI_API_KEY belum dikonfigurasi");
   }
 
   let effectiveSystem = systemInstruction;
-  if (documentContext) {
-    effectiveSystem = `${systemInstruction}
 
-========================================
-DOKUMEN PERUSAHAAN (KONTEKS INTERNAL)
-========================================
-Berikut adalah dokumen internal perusahaan yang relevan dengan pertanyaan user.
-Gunakan informasi ini sebagai referensi utama untuk menjawab pertanyaan.
+  if (modeInstructions[mode]) {
+    effectiveSystem += `\n\n${modeInstructions[mode]}`;
+  }
 
-DO NOT mention the existence of these documents unless the user asks about them.
-Simply use the information to answer accurately.
-
-DOKUMEN:
-${documentContext}
-========================================`;
+  if (imageUrl) {
+    effectiveSystem += `\n\nPengguna mengirim foto soal/materi. Analisis gambar tersebut dan berikan penjelasan sesuai mode yang dipilih.`;
   }
 
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-lite",
+    model: "gemini-1.5-flash",
     systemInstruction: effectiveSystem,
   });
 
@@ -86,6 +81,32 @@ ${documentContext}
   }));
 
   const chat = model.startChat({ history: chatHistory });
-  const result = await chat.sendMessage(message);
+
+  let result;
+  if (imageUrl) {
+    const base64Data = imageUrl.split(",")[1] || imageUrl;
+    result = await chat.sendMessage([
+      message,
+      { inline_data: { data: base64Data, mime_type: "image/jpeg" } },
+    ]);
+  } else {
+    result = await chat.sendMessage(message);
+  }
+
+  return result.response.text();
+}
+
+export async function generateSummary(text: string): Promise<string> {
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY belum dikonfigurasi");
+  }
+
+  const model = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
+    systemInstruction: `Kamu adalah asisten ringkasan. Buat ringkasan terstruktur dari teks yang diberikan. Gunakan poin-poin, beri judul bagian, dan pertahankan informasi penting. Bahasa: Indonesia.`,
+  });
+
+  const prompt = `Ringkas teks berikut secara terstruktur:\n\n${text}`;
+  const result = await model.generateContent(prompt);
   return result.response.text();
 }
