@@ -20,6 +20,52 @@ interface Conversation {
   messages: Message[];
 }
 
+// Bersihkan sisa simbol Markdown/LaTeX agar jawaban AI mudah dibaca
+function cleanText(raw: string): string {
+  const DOLLAR = String.fromCharCode(36);
+  const SLASH = String.fromCharCode(92);
+  const TICK = String.fromCharCode(96);
+  const CR = String.fromCharCode(13);
+  let t = raw.split(CR).join("");
+  t = t.split(DOLLAR).join("");
+  t = t.split(SLASH).join("");
+  t = t.split("#").join("");
+  t = t.split("**").join("");
+  t = t.split(TICK).join("");
+  return t;
+}
+
+function MessageText({ content }: { content: string }) {
+  const NL = String.fromCharCode(10);
+  const lines = cleanText(content).split(NL);
+  return (
+    <div className="space-y-1 leading-relaxed">
+      {lines.map((line, i) => {
+        const trimmed = line.trim();
+        if (trimmed === "") return <div key={i} className="h-1" />;
+        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+          return (
+            <div key={i} className="flex gap-2">
+              <span className="select-none">-</span>
+              <span>{trimmed.slice(2)}</span>
+            </div>
+          );
+        }
+        const num = trimmed.match(/^([0-9]+[.)]) +(.*)$/);
+        if (num) {
+          return (
+            <div key={i} className="flex gap-2">
+              <span className="select-none">{num[1]}</span>
+              <span>{num[2]}</span>
+            </div>
+          );
+        }
+        return <p key={i}>{trimmed}</p>;
+      })}
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -349,7 +395,7 @@ export default function ChatPage() {
                     msg.role === "user" ? "bg-emerald-600 text-white rounded-br-md" : "bg-gray-100 text-gray-900 rounded-bl-md"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  <MessageText content={msg.content} />
                 </div>
                 {msg.role === "user" && (
                   <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
